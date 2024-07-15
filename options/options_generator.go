@@ -184,6 +184,7 @@ func (g *Generator) GenerateCodeByTemplate() {
 		template.FuncMap{
 			"bigCamelToSmallCamel":  BigCamelToSmallCamel,
 			"capitalizeFirstLetter": CapitalizeFirstLetter,
+			"getFirstLetter":        GetFirstLetter,
 		})
 	if g.mode == "write" {
 		tmpl, err = tmpl.Parse(templates.OptionTmpl)

@@ -42,3 +42,16 @@ func CapitalizeFirstLetter(input string) string {
 
 	return firstCharUpper + input[1:]
 }
+
+// GetFirstLetter 获取字符串的首字母小写.
+// user → u.
+// User → u.
+func GetFirstLetter(input string) string {
+	if len(input) == 0 {
+		return input
+	}
+
+	firstChar := []rune(input)[:1]
+
+	return strings.ToLower(string(firstChar[0]))
+}

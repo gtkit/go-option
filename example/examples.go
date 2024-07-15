@@ -31,6 +31,7 @@ type GenericExample[T any, U comparable, V ~int] struct {
 	D string
 }
 
+//go:generate go run ../cmd/go-option/main.go -type RedisClientOpt  -output ./generic_redis_option.go
 //go:generate go run ../cmd/go-option/main.go -type RedisClientOpt -mode append -output ./generic_example_option.go
 type RedisClientOpt struct {
 	// Network type to use, either tcp or unix.
@@ -38,7 +39,7 @@ type RedisClientOpt struct {
 	Network string
 
 	// Redis server address in "host:port" format.
-	Addr string
+	addr string
 
 	// Username to authenticate the current connection when Redis ACLs are used.
 	// See: https://redis.io/commands/auth.
