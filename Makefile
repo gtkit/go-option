@@ -1,9 +1,4 @@
-.PHONY: manual tool check
-
-LocalApp=optioner
-
-manual:
-	go build  -ldflags "-s -w" -gcflags="-m"  -o ${LocalApp} cmd/go-option/main.go && upx -9 ${LinuxApp}
+.PHONY:  tool check
 
 LINT_TARGETS ?= ./...
 tool: ## Lint Go code with the installed golangci-lint

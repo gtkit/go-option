@@ -54,9 +54,9 @@ var (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "optioner is a tool for generating functional options pattern.\n")
+	fmt.Fprintf(os.Stderr, "go-option is a tool for generating functional options pattern.\n")
 	fmt.Fprintf(os.Stderr, "Usage: \n")
-	fmt.Fprintf(os.Stderr, "\t optioner [flags]\n")
+	fmt.Fprintf(os.Stderr, "\t go-option [flags]\n")
 	fmt.Fprintf(os.Stderr, "Flags:\n")
 	fmt.Fprintf(os.Stderr, "\t -type <struct name>\n")
 	fmt.Fprintf(os.Stderr, "\t -output <output path>, default: srcDir/opt_xxx_gen.go\n")
