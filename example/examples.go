@@ -31,6 +31,7 @@ type GenericExample[T any, U comparable, V ~int] struct {
 	D string
 }
 
+//go:generate go run ../cmd/go-option/main.go -type RedisClientOpt  -with_prefix Xzf
 //go:generate go run ../cmd/go-option/main.go -type RedisClientOpt  -output ./generic_redis_option.go
 //go:generate go run ../cmd/go-option/main.go -type RedisClientOpt -mode append -output ./generic_example_option.go
 type RedisClientOpt struct {
@@ -39,11 +40,11 @@ type RedisClientOpt struct {
 	Network string
 
 	// Redis server address in "host:port" format.
-	addr string
+	addr string `opt:"-"`
 
 	// Username to authenticate the current connection when Redis ACLs are used.
 	// See: https://redis.io/commands/auth.
-	Username string
+	Username string `opt:"-"`
 
 	// Password to authenticate the current connection.
 	// See: https://redis.io/commands/auth.

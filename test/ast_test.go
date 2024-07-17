@@ -17,22 +17,23 @@ type User[T any, R any] struct {
 }
 
 func TestAST(t *testing.T) {
-	src := `package test
-
-import (
-	"testing"
-)
-
-type User[T any, R any] struct {
-Name string 
-NecGenericFiled T 
-Age int
-Gender string
-GenericFiled R
-}
-`
+	// 	src := `package test
+	//
+	// import (
+	// 	"testing"
+	// )
+	//
+	// type User[T any, R any] struct {
+	// Name string
+	// NecGenericFiled T
+	// Age int
+	// Gender string
+	// GenericFiled R
+	// }
+	// `
 	fset := token.NewFileSet() // positions are relative to fset
-	f, err := parser.ParseFile(fset, "", src, 0)
+	// f, err := parser.ParseFile(fset, "", src, 0)
+	f, err := parser.ParseFile(fset, "../example/examples.go", nil, 0)
 	if err != nil {
 		panic(err)
 	}

@@ -32,19 +32,19 @@ func New{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .Generi
 /**
  * field name: {{ $field.Name}}
  */
-type {{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}} struct {
+type {{ $.WithPrefix }}{{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}} struct {
 	{{ $firstLetterToLower }} {{ $field.Type }}
 }
 
-// apply the {{ $field.Name }} option to the given struct.
-func ({{ $firstLetter }} {{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) apply (opt *{{ $.StructName }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) {
+// apply the {{ $.WithPrefix }}{{ $field.Name }} option to the given struct.
+func ({{ $firstLetter }} {{ $.WithPrefix }}{{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) apply (opt *{{ $.StructName }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) {
 	opt.{{ $field.Name }} = {{ $firstLetter }}.{{ $firstLetterToLower }}
 }
 
 
-// With{{ $firstLetterToUpper }} Option.
-func With{{ $firstLetterToUpper }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}(opt{{ $firstLetterToUpper }} {{ $field.Type }}) {{ $.StructName }}Option{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
-	return {{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}{
+// With{{ $.WithPrefix }}{{ $firstLetterToUpper }} Option.
+func With{{ $.WithPrefix }}{{ $firstLetterToUpper }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}(opt{{ $firstLetterToUpper }} {{ $field.Type }}) {{ $.StructName }}Option{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
+	return {{ $.WithPrefix }}{{ $field.Name}}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}{
         {{ $firstLetterToLower }}: opt{{ $firstLetterToUpper }},
     }
 }
