@@ -1,29 +1,29 @@
+// {{ .StructName }}Option defines the functional option type for {{ .StructName }}.
 type {{ .StructName }}Option{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}} func(*{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}})
 
-func New{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}({{ range $index, $field := .Fields }}{{ $field.Name | bigCamelToSmallCamel }} {{ $field.Type }},{{ end }} opts ...{{ $.StructName }}Option{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) *{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
-	{{ .NewStructName }} := &{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}{
-		{{ range $index, $field := .Fields }}{{ $field.Name }}: {{ $field.Name | bigCamelToSmallCamel }},
+// New{{ .StructName }} creates a new {{ .StructName }} with required fields and functional options.
+func New{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}({{ range $index, $field := .Fields }}{{ $field.Name | bigCamelToSmallCamel | safeName }} {{ $field.Type }},{{ end }} opts ...{{ $.StructName }}Option{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) *{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
+	{{ .NewStructName | safeName }} := &{{ .StructName }}{{if .GenericParams}}[{{range $index, $param := .GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}{
+		{{ range $index, $field := .Fields }}{{ $field.Name }}: {{ $field.Name | bigCamelToSmallCamel | safeName }},
 		{{ end }}
 	}
 
 	for _, opt := range opts {
-		opt({{ .NewStructName }})
+		opt({{ .NewStructName | safeName }})
 	}
 
-	return {{ .NewStructName }}
+	return {{ .NewStructName | safeName }}
 }
-
 {{ if .OptionalFields }}
 {{ range $field := .OptionalFields }}
-{{ $firstLetterToLower :=  $field.Name | bigCamelToSmallCamel }}
+{{ $fieldNameLower :=  $field.Name | bigCamelToSmallCamel | safeName }}
 {{ $firstLetterToUpper :=  $field.Name | capitalizeFirstLetter }}
 
 // With{{ $.WithPrefix }}{{ $firstLetterToUpper }} sets the {{ $field.Name }} field.
-func With{{ $.WithPrefix }}{{ $firstLetterToUpper }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}({{ $firstLetterToLower }} {{ $field.Type }}) {{ $.StructName }}Option{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
-	return func({{ $.StructName | getFirstLetter }} *{{ $.StructName }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) {
-		{{ $.StructName | getFirstLetter }}.{{ $field.Name }} = {{ $firstLetterToLower }}
+func With{{ $.WithPrefix }}{{ $firstLetterToUpper }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}} {{$param.Type}}{{end}}]{{end}}({{ $fieldNameLower }} {{ $field.Type }}) {{ $.StructName }}Option{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}} {
+	return func({{ $.NewStructName | safeName }} *{{ $.StructName }}{{if $.GenericParams}}[{{range $index, $param := $.GenericParams}}{{if $index}}, {{end}}{{$param.Name}}{{end}}]{{end}}) {
+		{{ $.NewStructName | safeName }}.{{ $field.Name }} = {{ $fieldNameLower }}
 	}
 }
-
 {{ end }}
 {{ end }}
