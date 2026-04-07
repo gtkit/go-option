@@ -5,21 +5,33 @@ import (
 	"unicode"
 )
 
-// CamelToSnake 驼峰命名转成蛇形命名，如果不是驼峰命名，则转成对应小写字符串
-// UserAgent → user_agent
-// User → user.
+// CamelToSnake converts camelCase or PascalCase to snake_case.
+// Handles consecutive capitals correctly: HTTPServer → http_server, UserID → user_id.
 func CamelToSnake(camelCase string) string {
 	var result strings.Builder
-	for i, c := range camelCase {
-		if unicode.IsUpper(c) && i > 0 {
-			result.WriteByte('_')
+	runes := []rune(camelCase)
+	for i, c := range runes {
+		if unicode.IsUpper(c) {
+			if i > 0 {
+				// Insert underscore before an uppercase letter when:
+				// - Previous char is lowercase, OR
+				// - Next char is lowercase (handles "HTTPServer" → "http_server")
+				prev := runes[i-1]
+				if unicode.IsLower(prev) {
+					result.WriteByte('_')
+				} else if i+1 < len(runes) && unicode.IsLower(runes[i+1]) {
+					result.WriteByte('_')
+				}
+			}
+			result.WriteRune(unicode.ToLower(c))
+		} else {
+			result.WriteRune(c)
 		}
-		result.WriteRune(unicode.ToLower(c))
 	}
 	return result.String()
 }
 
-// BigCamelToSmallCamel 大驼峰格式的字符串转小驼峰格式的字符串
+// BigCamelToSmallCamel converts PascalCase to camelCase.
 // UserAgent → userAgent.
 func BigCamelToSmallCamel(bigCamel string) string {
 	if len(bigCamel) == 0 {
@@ -30,28 +42,24 @@ func BigCamelToSmallCamel(bigCamel string) string {
 	return firstChar + bigCamel[1:]
 }
 
-// CapitalizeFirstLetter 将首字母转换为大写
+// CapitalizeFirstLetter converts the first letter to uppercase.
 // user → User.
 func CapitalizeFirstLetter(input string) string {
 	if len(input) == 0 {
 		return input
 	}
 
-	firstChar := []rune(input)[:1]
-	firstCharUpper := string(unicode.ToUpper(firstChar[0]))
-
-	return firstCharUpper + input[1:]
+	runes := []rune(input)
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }
 
-// GetFirstLetter 获取字符串的首字母小写.
-// user → u.
+// GetFirstLetter returns the lowercase first letter of a string.
 // User → u.
 func GetFirstLetter(input string) string {
 	if len(input) == 0 {
 		return input
 	}
 
-	firstChar := []rune(input)[:1]
-
-	return strings.ToLower(string(firstChar[0]))
+	return strings.ToLower(string([]rune(input)[0]))
 }

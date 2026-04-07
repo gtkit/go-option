@@ -19,22 +19,32 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"html/template"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"text/template"
 
 	"golang.org/x/tools/imports"
 
 	"github.com/gtkit/go-option/templates"
 )
 
+// Style represents the code generation style.
+type Style string
+
+const (
+	// StyleInterface generates interface-based options (default).
+	StyleInterface Style = "interface"
+	// StyleClosure generates closure-based options (go-optioner compatible).
+	StyleClosure Style = "closure"
+)
+
 type Generator struct {
 	StructInfo *StructInfo
 	outPath    string
 	mode       string
+	style      Style
 
 	code   bytes.Buffer
 	header bytes.Buffer
@@ -47,6 +57,7 @@ func NewGenerator() *Generator {
 			Fields:         make([]FieldInfo, 0),
 			OptionalFields: make([]FieldInfo, 0),
 		},
+		style: StyleInterface,
 	}
 }
 
@@ -68,24 +79,30 @@ type StructInfo struct {
 	WithPrefix string
 }
 
-func (g *Generator) GeneratingOptions() {
+// GeneratingOptions parses all Go files in the current directory to find the target struct.
+func (g *Generator) GeneratingOptions() error {
 	pkg, err := build.Default.ImportDir(".", 0)
 	if err != nil {
-		log.Fatalf("Processsing directory failed: %s", err.Error())
+		return fmt.Errorf("processing directory failed: %w", err)
 	}
 	for _, file := range pkg.GoFiles {
-		if found := g.parseStruct(file); found {
-			g.Found = found
+		found, err := g.parseStruct(file)
+		if err != nil {
+			return fmt.Errorf("parsing file %s: %w", file, err)
+		}
+		if found {
+			g.Found = true
 			break
 		}
 	}
+	return nil
 }
 
-func (g *Generator) parseStruct(fileName string) bool {
+func (g *Generator) parseStruct(fileName string) (bool, error) {
 	fSet := token.NewFileSet()
 	file, err := parser.ParseFile(fSet, fileName, nil, 0)
 	if err != nil {
-		log.Fatal(err)
+		return false, fmt.Errorf("parsing Go file %s: %w", fileName, err)
 	}
 
 	g.StructInfo.PackageName = file.Name.Name
@@ -103,117 +120,144 @@ func (g *Generator) parseStruct(fileName string) bool {
 			if typeSpec.Name.String() != g.StructInfo.StructName {
 				continue
 			}
-			if structDecl, ok := typeSpec.Type.(*ast.StructType); ok {
-				log.Printf("Generating Struct \"%s\" \n", g.StructInfo.StructName)
-				if typeSpec.TypeParams != nil {
-					log.Println("This is a struct which contains generic type:", typeSpec.Name)
-					for _, param := range typeSpec.TypeParams.List {
-						for _, name := range param.Names {
-							typ := g.getTypeName(param.Type)
-							g.StructInfo.GenericParams = append(g.StructInfo.GenericParams, FieldInfo{
-								Name: name.Name,
-								Type: typ,
-							})
-						}
-					}
-				}
-				for _, field := range structDecl.Fields.List {
-					var fieldName string
-					if len(field.Names) == 0 {
-						if ident, ok := field.Type.(*ast.Ident); ok { // combined struct
-							fieldName = ident.Name
-						} else if starExpr, ok := field.Type.(*ast.StarExpr); ok {
-							if ident2, ok := starExpr.X.(*ast.Ident); ok { // combined struct
-								fieldName = ident2.Name
-							} else {
-								continue
-							}
-						} else {
-							continue
-						}
-					} else {
-						fieldName = field.Names[0].Name
-					}
-					optionIgnore := false
+			structDecl, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				return false, fmt.Errorf("target %q is not a struct type", g.StructInfo.StructName)
+			}
 
-					fieldType := g.getTypeName(field.Type)
-					if field.Tag != nil {
-						tags := strings.Replace(field.Tag.Value, "`", "", -1)
-						tag := reflect.StructTag(tags).Get("opt")
-						if tag == "-" {
-							g.StructInfo.Fields = append(g.StructInfo.Fields, FieldInfo{
-								Name: fieldName,
-								Type: fieldType,
-							})
-							optionIgnore = true
+			if typeSpec.TypeParams != nil {
+				for _, param := range typeSpec.TypeParams.List {
+					for _, name := range param.Names {
+						typ, err := g.getTypeName(param.Type)
+						if err != nil {
+							return false, fmt.Errorf("resolving generic param type: %w", err)
 						}
-					}
-					if !optionIgnore {
-						g.StructInfo.OptionalFields = append(g.StructInfo.OptionalFields, FieldInfo{
-							Name: fieldName,
-							Type: fieldType,
+						g.StructInfo.GenericParams = append(g.StructInfo.GenericParams, FieldInfo{
+							Name: name.Name,
+							Type: typ,
 						})
 					}
 				}
-				return true
-			} else {
-				log.Fatalf(fmt.Sprintf("Target[%s] type is not a struct", g.StructInfo.StructName))
 			}
+			for _, field := range structDecl.Fields.List {
+				var fieldName string
+				if len(field.Names) == 0 {
+					switch t := field.Type.(type) {
+					case *ast.Ident:
+						fieldName = t.Name
+					case *ast.StarExpr:
+						if ident, ok := t.X.(*ast.Ident); ok {
+							fieldName = ident.Name
+						} else {
+							continue
+						}
+					default:
+						continue
+					}
+				} else {
+					fieldName = field.Names[0].Name
+				}
+
+				fieldType, err := g.getTypeName(field.Type)
+				if err != nil {
+					return false, fmt.Errorf("resolving type of field %s: %w", fieldName, err)
+				}
+
+				optionIgnore := false
+				if field.Tag != nil {
+					tags := strings.Replace(field.Tag.Value, "`", "", -1)
+					tag := reflect.StructTag(tags).Get("opt")
+					if tag == "-" {
+						g.StructInfo.Fields = append(g.StructInfo.Fields, FieldInfo{
+							Name: fieldName,
+							Type: fieldType,
+						})
+						optionIgnore = true
+					}
+				}
+				if !optionIgnore {
+					g.StructInfo.OptionalFields = append(g.StructInfo.OptionalFields, FieldInfo{
+						Name: fieldName,
+						Type: fieldType,
+					})
+				}
+			}
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func (g *Generator) GenerateCodeByTemplate() {
-	var (
-		headerTmpl *template.Template
-		tmpl       *template.Template
-		err        error
-	)
+// GenerateCodeByTemplate renders the option code using the appropriate template.
+func (g *Generator) GenerateCodeByTemplate() error {
 	if g.mode == "append" {
-		headerTmpl, err = template.New("header_options").Parse(templates.HeaderTmpl)
+		headerTmpl, err := template.New("header_options").Parse(templates.HeaderTmpl)
 		if err != nil {
-			log.Fatal("Failed to parse header template:", err)
+			return fmt.Errorf("parsing header template: %w", err)
 		}
-		err = headerTmpl.Execute(&g.header, g.StructInfo)
-		if err != nil {
-			log.Fatal(err)
+		if err = headerTmpl.Execute(&g.header, g.StructInfo); err != nil {
+			return fmt.Errorf("executing header template: %w", err)
 		}
 	}
-	tmpl = template.New("options").Funcs(
+
+	tmpl := template.New("options").Funcs(
 		template.FuncMap{
 			"bigCamelToSmallCamel":  BigCamelToSmallCamel,
 			"capitalizeFirstLetter": CapitalizeFirstLetter,
 			"getFirstLetter":        GetFirstLetter,
 		})
-	if g.mode == "write" {
-		tmpl, err = tmpl.Parse(templates.OptionTmpl)
-	} else {
-		tmpl, err = tmpl.Parse(templates.AdditionalTmpl)
-	}
+
+	tmplContent, err := g.selectTemplate()
 	if err != nil {
-		log.Fatal("Failed to parse template:", err)
+		return err
 	}
 
-	err = tmpl.Execute(&g.code, g.StructInfo)
+	tmpl, err = tmpl.Parse(tmplContent)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("parsing template: %w", err)
+	}
+
+	if err = tmpl.Execute(&g.code, g.StructInfo); err != nil {
+		return fmt.Errorf("executing template: %w", err)
+	}
+	return nil
+}
+
+// selectTemplate returns the appropriate template content based on style and mode.
+func (g *Generator) selectTemplate() (string, error) {
+	switch g.style {
+	case StyleClosure:
+		if g.mode == "append" {
+			return templates.AdditionalClosureTmpl, nil
+		}
+		return templates.OptionClosureTmpl, nil
+	case StyleInterface:
+		if g.mode == "append" {
+			return templates.AdditionalTmpl, nil
+		}
+		return templates.OptionTmpl, nil
+	default:
+		return "", fmt.Errorf("unsupported style: %s", g.style)
 	}
 }
 
-func (g *Generator) OutputToFile() {
+// OutputToFile writes the generated code to the output file.
+func (g *Generator) OutputToFile() error {
 	var src []byte
 	if g.mode == "write" {
 		dir := filepath.Dir(g.outPath)
-		err := os.MkdirAll(dir, os.ModePerm)
-		if err != nil {
-			log.Fatal("mkdir failed, error: ", err)
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return fmt.Errorf("creating directory %s: %w", dir, err)
 		}
-		src = g.forMart()
+		var err error
+		src, err = g.format()
+		if err != nil {
+			return fmt.Errorf("formatting generated code: %w", err)
+		}
 	} else {
 		readFile, err := os.ReadFile(g.outPath)
 		if err != nil {
-			log.Fatal("Open the specified file failed, error: ", err)
+			return fmt.Errorf("reading file %s: %w", g.outPath, err)
 		}
 		header := g.header.Bytes()
 		if !bytes.HasPrefix(readFile, header) {
@@ -222,83 +266,140 @@ func (g *Generator) OutputToFile() {
 		readFile = append(readFile, g.code.Bytes()...)
 		src, err = imports.Process("", readFile, nil)
 		if err != nil {
-			log.Fatal("Failed to format the generated code: ", err, ", the grammar of the specified file code maybe incorrect.")
+			return fmt.Errorf("formatting appended code (target file may have syntax errors): %w", err)
 		}
 	}
-	err := os.WriteFile(g.outPath, src, 0644)
-	if err != nil {
-		log.Fatal("write file failed, error: ", err)
+	if err := os.WriteFile(g.outPath, src, 0644); err != nil {
+		return fmt.Errorf("writing file %s: %w", g.outPath, err)
 	}
-	log.Printf("Generating Functional Options Code Successfully.\nOut: %s\n", g.outPath)
+	return nil
 }
 
-func (g *Generator) forMart() []byte {
+func (g *Generator) format() ([]byte, error) {
 	source, err := imports.Process("", g.code.Bytes(), nil)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("imports.Process failed: %w", err)
 	}
-	return source
+	return source, nil
 }
 
-func (g *Generator) SetOutPath(outPath *string) {
-	fileName := fmt.Sprintf("opt_%s_gen.go", CamelToSnake(g.StructInfo.StructName))
-	if len(*outPath) > 0 {
-		g.outPath = *outPath
+// SetOutPath sets the output file path. If outPath is empty, uses the default naming convention.
+func (g *Generator) SetOutPath(outPath string) {
+	if len(outPath) > 0 {
+		g.outPath = outPath
 	} else {
-		g.outPath = fileName
+		g.outPath = fmt.Sprintf("opt_%s_gen.go", CamelToSnake(g.StructInfo.StructName))
 	}
 }
 
-func (g *Generator) getTypeName(expr ast.Expr) string {
+func (g *Generator) getTypeName(expr ast.Expr) (string, error) {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		return t.Name
+		return t.Name, nil
 	case *ast.SelectorExpr:
-		return fmt.Sprintf("%s.%s", g.getTypeName(t.X), t.Sel.Name)
+		x, err := g.getTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("%s.%s", x, t.Sel.Name), nil
 	case *ast.ArrayType:
+		elt, err := g.getTypeName(t.Elt)
+		if err != nil {
+			return "", err
+		}
 		if t.Len == nil {
-			return "[]" + g.getTypeName(t.Elt)
+			return "[]" + elt, nil
 		}
 		if basicLit, ok := t.Len.(*ast.BasicLit); ok && basicLit.Kind == token.INT {
-			return "[" + basicLit.Value + "]" + g.getTypeName(t.Elt)
-		} else {
-			log.Fatalf("Array len error: %T", t)
-			return ""
+			return "[" + basicLit.Value + "]" + elt, nil
 		}
+		return "", fmt.Errorf("unsupported array length expression: %T", t.Len)
 	case *ast.MapType:
-		return fmt.Sprintf("map[%s]%s", g.getTypeName(t.Key), g.getTypeName(t.Value))
+		key, err := g.getTypeName(t.Key)
+		if err != nil {
+			return "", err
+		}
+		val, err := g.getTypeName(t.Value)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("map[%s]%s", key, val), nil
 	case *ast.StarExpr:
-		return "*" + g.getTypeName(t.X)
-	// case *ast.InterfaceType:
-	//	return "" // ignore
+		x, err := g.getTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		return "*" + x, nil
 	case *ast.StructType:
-		return "struct{}"
+		return "struct{}", nil
 	case *ast.FuncType:
 		return g.parseFuncType(t)
 	case *ast.ChanType:
-		return "chan " + g.getTypeName(t.Value)
+		val, err := g.getTypeName(t.Value)
+		if err != nil {
+			return "", err
+		}
+		switch t.Dir {
+		case ast.SEND:
+			return "chan<- " + val, nil
+		case ast.RECV:
+			return "<-chan " + val, nil
+		default:
+			return "chan " + val, nil
+		}
+	case *ast.InterfaceType:
+		return "interface{}", nil
 	case *ast.UnaryExpr:
-		return "~" + g.getTypeName(t.X)
+		x, err := g.getTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		return "~" + x, nil
+	case *ast.BinaryExpr:
+		left, err := g.getTypeName(t.X)
+		if err != nil {
+			return "", err
+		}
+		right, err := g.getTypeName(t.Y)
+		if err != nil {
+			return "", err
+		}
+		return left + " | " + right, nil
+	case *ast.Ellipsis:
+		elt, err := g.getTypeName(t.Elt)
+		if err != nil {
+			return "", err
+		}
+		return "..." + elt, nil
 	default:
-		log.Fatalf("Unsupported type for field: %T", t)
-		return ""
+		return "", fmt.Errorf("unsupported AST type: %T", expr)
 	}
 }
 
-func (g *Generator) parseFuncType(f *ast.FuncType) string {
+func (g *Generator) parseFuncType(f *ast.FuncType) (string, error) {
 	var params, results []string
 	if f.Params != nil {
 		for _, field := range f.Params.List {
-			paramType := g.getTypeName(field.Type)
-			for _, name := range field.Names {
-				params = append(params, fmt.Sprintf("%s %s", name.Name, paramType))
+			paramType, err := g.getTypeName(field.Type)
+			if err != nil {
+				return "", err
+			}
+			if len(field.Names) > 0 {
+				for _, name := range field.Names {
+					params = append(params, fmt.Sprintf("%s %s", name.Name, paramType))
+				}
+			} else {
+				params = append(params, paramType)
 			}
 		}
 	}
 
 	if f.Results != nil {
 		for _, field := range f.Results.List {
-			resultType := g.getTypeName(field.Type)
+			resultType, err := g.getTypeName(field.Type)
+			if err != nil {
+				return "", err
+			}
 			if len(field.Names) > 0 {
 				for _, name := range field.Names {
 					results = append(results, fmt.Sprintf("%s %s", name.Name, resultType))
@@ -309,16 +410,30 @@ func (g *Generator) parseFuncType(f *ast.FuncType) string {
 		}
 	}
 
-	if len(results) == 1 {
-		return fmt.Sprintf("func(%s) %s", strings.Join(params, ", "), results[0])
+	if len(results) == 0 {
+		return fmt.Sprintf("func(%s)", strings.Join(params, ", ")), nil
 	}
-	return fmt.Sprintf("func(%s) (%s)", strings.Join(params, ", "), strings.Join(results, ", "))
+	if len(results) == 1 {
+		return fmt.Sprintf("func(%s) %s", strings.Join(params, ", "), results[0]), nil
+	}
+	return fmt.Sprintf("func(%s) (%s)", strings.Join(params, ", "), strings.Join(results, ", ")), nil
 }
 
-func (g *Generator) SetMod(mode string) {
+// SetMode sets the file writing mode ("write" or "append").
+func (g *Generator) SetMode(mode string) {
 	g.mode = mode
+}
+
+// SetStyle sets the code generation style ("interface" or "closure").
+func (g *Generator) SetStyle(style Style) {
+	g.style = style
 }
 
 func (g *Generator) SetWithPrefix(withPrefix string) {
 	g.StructInfo.WithPrefix = withPrefix
+}
+
+// OutPath returns the configured output file path.
+func (g *Generator) OutPath() string {
+	return g.outPath
 }
